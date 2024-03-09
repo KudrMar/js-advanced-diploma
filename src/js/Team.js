@@ -13,4 +13,16 @@
  * */
 export default class Team {
   // TODO: write your logic here
+  constructor(characters) {
+    this.characters = characters;
+    //   this.team = [];
+             
+    //   const teamWe = generateTeam([Bowman, Swordsman, Magician], 1, 2);
+    //   teamWe.forEach((e) => this.team.push(new PositionedCharacter(e, this.getIndex(1))));
+  
+    //   const teamEnemy = generateTeam([Daemon, Undead, Vampire], 1, 2);
+    //   teamEnemy.forEach((e) => this.team.push(new PositionedCharacter(e, this.getIndex())));
+    // }
+  
+  }
 }
