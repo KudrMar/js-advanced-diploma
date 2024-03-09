@@ -8,6 +8,7 @@ import Undead from '../characters/Undead';
 import Daemon from '../characters/Daemon';
 import {generateTeam} from '../generators';
 import GameController from '../GameController';
+import GamePlay from '../GamePlay';
 
 const boardSize = 8;
 
@@ -63,14 +64,16 @@ test('new extends Character not error', () => {
 });
 
 test('characteristics of Character', () => {
-  const comparison = {
+  const expected = {
     type: 'bowman',
     level: 1,
     health: 100,
     attack: 25,
+    attackRange: 2,
+    moveRange: 2,
     defence: 25,
    }
-  expect(new Bowman(1)).toEqual(comparison);
+  expect(new Bowman(1)).toEqual(expected);
 });
 
 test('Character', () => {
@@ -84,111 +87,14 @@ test('toolTipTemplate', () => {
   expect(GC.showCellTooltipText(new Bowman(1))).toBe(expected);
 });
 
-/*import {Team} from "../../js/Team.js";
-import {Character} from "../../js/Character.js";
-import { Zombie } from "../../js/Zombie.js";
-import {ErrorRepository} from "../../js/ErrorRepository.js";*/
-
-/*const teamAdd = new Team();
-const characterAdd = new Character("Vasia","Bowman");
-teamAdd.add(characterAdd);
-test('Team add new character', () => {
-  expect(teamAdd.members).toContain(characterAdd);
+test('permittedMoves permittedAttack', () => {
+  const GP = new GamePlay();
+  const GC = new GameController(GP,"");
+  const PermittedArea = GC.getPermittedArea(2, 2)
+  let expected = new Set([0, 1, 3, 4, 9, 10, 11, 16, 18, 20]);
+  expect(PermittedArea).toEqual(expected);
+  const Permittedattack = GC.getPermittedAttack(2, 2)
+  expected = new Set([0, 1, 3, 4, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20]);
+  expect(Permittedattack).toEqual(expected);
 });
-
-test('Team add character double choice', () => {
-  expect(() => teamAdd.add(characterAdd)).toThrow("Этот персонаж уже выбран!")
-});
-
-const character = new Character("Vasia", "Bowman");
-const character2 = new Character("Vasia", "Bowman");
-const character3 = new Character("Petya", "Bowman");
-test('addAll several characters', () => {
-  const team = new Team();
-  team.addAll(character, character2, character3);
-  const setOfCh = new Set();
-  setOfCh.add(character);
-  setOfCh.add(character2);
-  setOfCh.add(character3);
-  expect(team.members).toEqual(setOfCh);
-});
-
-test('toArray charactersArray', () => {
-  const team = new Team();
-  team.addAll(character, character2, character3);
-  const arrayOfCh = new Array();
-  arrayOfCh.push(character,character2,character3);
-  expect(team.toArray()).toEqual(arrayOfCh);
-});
-
-const errorItem = new ErrorRepository();
-errorItem.errors.set(1 , "Ошибка с типом 1");
-test('ErrorRepository code is present', () => {
-  expect(errorItem.translate(1)).toBe(
-    "Ошибка с типом 1"
-  );
-});
-
-test('ErrorRepository code is absent', () => {
-  expect(errorItem.translate(2)).toBe(
-    "Unknown error"
-  );
-});
-
-
-const zombieLevelUp = new Zombie("Вася");
-zombieLevelUp.levelUp();
-test('Zombie levelUp', () => {
-
-  const comparison = {
-       "attack": 48,
-       "defence": 12,
-       "health": 100,
-        "level": 2,
-        "name": "Вася",
-       "type": "Zombie",
-      }
-
-  expect(zombieLevelUp).toEqual(comparison);
-});
-
-
-const zombieDamage = new Zombie("Вася");
-zombieDamage.damage(10);
-test('Zombie damage', () => {
-
-  const comparison = {
-       "attack": 40,
-       "defence": 10,
-       "health": 91,
-        "level": 1,
-        "name": "Вася",
-       "type": "Zombie",
-      }
-
-  expect(zombieDamage).toEqual(comparison);
-});
-
-
-test('name exception', () => {
-  expect(() => new Zombie("В")).toThrow(
-    "Имя должно быть от 2 до 10 символов!"
-  );
-});
-
-test('type exception', () => {
-  expect(() => new Character("Вася")).toThrow(
-    "Недопустимый тип персонажа!"
-  );
-});
-
-const zombieLevelUpForDead = new Zombie("Вася");
-zombieLevelUpForDead.health = 0;
-test('Zombie levelUp for dead', () => {
-  expect(() => zombieLevelUpForDead.levelUp()).toThrow(
-    "Нельзя повысить левел умершего!"
-  );
-});*/
-
-
 

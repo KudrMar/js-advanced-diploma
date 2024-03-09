@@ -5,5 +5,7 @@ export default class Bowman extends Character {
     super(level, 'magician');
     this.attack = 10;
     this.defence = 40;
+    this.attackRange = 4;
+    this.moveRange = 1;
   }
 }
