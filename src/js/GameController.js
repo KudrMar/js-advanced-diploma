@@ -25,6 +25,7 @@ export default class GameController {
     this.selectedExpected = -1;
     this.boardSize = gamePlay.boardSize;
     this.currentCharacter = {};
+    this.activeTeam = 'player';
   }
 
   init() {
@@ -45,8 +46,12 @@ export default class GameController {
   onCellClick(index) {
     // TODO: react to click
     if (this.positionEnemy.has(index)) {
-      if ((this.selecte >= 0) && (this.permittedAttacks.has(index))) {
-        //для следущего пункта задания
+      if ((this.selected >= 0) && (this.permittedAttacks.has(index))) {
+       // let indexCh = Array.from(this.positionUs).indexOf(this.selected);
+        let currentCh = this.teamUs.characters[Array.from(this.positionUs).indexOf(this.selected)];
+        let currentEn = this.teamEnemy.characters[Array.from(this.positionEnemy).indexOf(index)];
+        this.attack(currentCh, currentEn, index);
+        this.enemyMove();
       } else if (this.selected >= 0) {
         GamePlay.showError('Враг вне досягаемости');
       } else {
@@ -64,7 +69,13 @@ export default class GameController {
       this.currentCharacter = this.teamUs.characters[indexCh];
       this.permittedMoves = this.getPermittedArea(this.currentCharacter.moveRange, index);
       this.permittedAttacks = this.getPermittedAttack(this.currentCharacter.attackRange, index);
+    } else {
+      if ((this.selected >= 0) && (this.permittedMoves.has(index))) {
+        this.moveCharacter(index)
+        this.enemyMove();
+      }
     }
+
   }
 
   onCellEnter(index) {
@@ -189,4 +200,152 @@ export default class GameController {
     }
     return area;
   }
+
+  redrawPositions() {
+    let position = [];
+    this.teamUs.characters.forEach((e, i) => position.push(new PositionedCharacter(e, Array.from(this.positionUs)[i])));
+    this.teamEnemy.characters.forEach((e, i) => position.push(new PositionedCharacter(e, Array.from(this.positionEnemy)[i])));
+    this.gamePlay.redrawPositions(position);
+  }
+
+  enemyMove() {
+    let enemyCh;
+    let enemyPos;
+    let permittedAttacks
+    let targetCh;
+    let targetPos;
+    let done = false;
+    let distance;
+    let newPos;
+    this.teamEnemy.characters.forEach((en, i) => {
+      if (!done) {
+      enemyCh = en;
+      enemyPos = Array.from(this.positionEnemy)[i];
+      permittedAttacks = this.getPermittedAttack(enemyCh.attackRange, enemyPos);
+      this.teamUs.characters.forEach((tg, j) => {
+        targetPos = Array.from(this.positionUs)[j];
+        if (permittedAttacks.has(targetPos) && (!done)) {
+          targetCh = tg;
+          this.attack(enemyCh, targetCh, targetPos);
+          done = true;
+        }
+      })
+      }
+    })
+
+    let arrOfPriority = [];
+    this.teamEnemy.characters.forEach((en, i) => {
+      enemyCh = en;
+      enemyPos = Array.from(this.positionEnemy)[i];
+      this.teamUs.characters.forEach((tg, j) => {
+        targetPos = Array.from(this.positionUs)[j];
+        distance = (Math.abs(this.getColumn(enemyPos) - this.getColumn(targetPos)) + Math.abs(this.getRow(enemyPos) - this.getRow(targetPos)))/(enemyCh.moveRange + enemyCh.attackRange + enemyCh.attack);
+        arrOfPriority.push({i,j, distance});
+      })
+    })
+
+    arrOfPriority.sort((a, b) => a.distance - b.distance);
+    enemyCh = this.teamEnemy.characters[arrOfPriority[0].i];
+    enemyPos = Array.from(this.positionEnemy)[arrOfPriority[0].i];
+    targetPos = Array.from(this.positionUs)[arrOfPriority[0].j];
+    let rowEn = this.getRow(enemyPos);
+    let rowtg = this.getRow(targetPos);
+    let maxI;
+    if ((rowEn < rowtg) && (!done)) {
+      if (rowEn + enemyPos.moveRange < rowtg) {
+        maxI =  enemyCh.moveRange;
+      } else {maxI = rowtg - rowEn};
+      while (maxI >= 0){
+        newPos = enemyPos + maxI * this.boardSize;
+        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        if ((indexCh === -1) && (!done)) {
+          this.moveCharacterEnemy(newPos, enemyPos); 
+          done = true;
+        }
+        maxI--;
+      }
+    } else if ((rowEn > rowtg) && (!done)) {
+      if (rowEn + enemyPos.moveRange < rowtg) {
+        maxI =  -enemyCh.moveRange;
+      } else {maxI = - rowtg + rowEn};
+      while (maxI >= 0){
+        newPos = enemyPos - maxI * this.boardSize;
+        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        if ((indexCh === -1) && (!done)) {
+          this.moveCharacterEnemy(newPos, enemyPos); 
+          done = true;
+        }
+        maxI--;
+      }
+    }  
+    
+    let colEn = this.getColumn(enemyPos);
+    let coltg = this.getColumn(targetPos);
+    let maxJ;
+    if ((colEn < coltg) && (!done)) {
+      if (colEn + enemyPos.moveRange < coltg) {
+        maxI =  enemyCh.moveRange;
+      } else {maxJ = colEn - colEn};
+      while (maxJ >= 0){
+        newPos = enemyPos + maxJ;
+        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        if ((indexCh === -1) && (!done)) {
+          this.moveCharacterEnemy(newPos, enemyPos); 
+          done = true;
+        }
+        maxJ--;
+      }
+    } else if ((colEn > coltg) && (!done)) {
+      if (colEn + enemyPos.moveRange < coltg) {
+        maxJ =  -enemyCh.moveRange;
+      } else {maxJ = - coltg + colEn};
+      while (maxJ >= 0){
+        newPos = enemyPos - maxJ;
+        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        if ((indexCh === -1) && (!done)) {
+          this.moveCharacterEnemy(newPos, enemyPos); 
+          done = true;
+        }
+        maxJ--;
+      }
+    }
+
+
+
+  }
+
+  attack(currentCh, currentEn, index) {
+    let damage = Math.max(currentCh.attack - currentEn.defence, currentCh.attack * 0.1);
+    this.gamePlay.showDamage(index, damage);
+    currentEn.health = Math.max(currentEn.health - damage, 0);
+    this.redrawPositions();
+  }
+
+  getRow(index) {
+    return Math.floor(index / this.boardSize);
+  }
+
+  getColumn(index) {
+    return index % this.boardSize;
+  }
+
+  moveCharacter(index) {
+    let positionUs = Array.from(this.positionUs);
+    positionUs[positionUs.indexOf(this.selected)] = index;
+    this.positionUs = new Set(positionUs);
+    this.gamePlay.deselectCell(this.selected);
+    this.gamePlay.deselectCell(index);
+    this.permittedMoves.clear();
+    this.permittedAttacks.clear();
+    this.redrawPositions();
+  }
+
+  moveCharacterEnemy(index, oldPos) {
+    let positionEnemy = Array.from(this.positionEnemy);
+    positionEnemy[positionEnemy.indexOf(oldPos)] = index;
+    this.positionEnemy = new Set(positionEnemy);
+    this.redrawPositions();
+  }
+
 }
+
