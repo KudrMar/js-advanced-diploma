@@ -26,10 +26,11 @@ export default class GameController {
     this.boardSize = gamePlay.boardSize;
     this.currentCharacter = {};
     this.activeTeam = 'player';
+    this.currentLevel = 1;
   }
 
   init() {
-    this.gamePlay.drawUi(themes.prairie);
+    this.gamePlay.drawUi(this.getThemes().get(this.currentLevel));
     // TODO: add event listeners to gamePlay events
     // TODO: load saved stated from stateService
     let position = [];
@@ -47,9 +48,9 @@ export default class GameController {
     // TODO: react to click
     if (this.positionEnemy.has(index)) {
       if ((this.selected >= 0) && (this.permittedAttacks.has(index))) {
-       // let indexCh = Array.from(this.positionUs).indexOf(this.selected);
         let currentCh = this.teamUs.characters[Array.from(this.positionUs).indexOf(this.selected)];
         let currentEn = this.teamEnemy.characters[Array.from(this.positionEnemy).indexOf(index)];
+        this.gamePlay.deselectCell(this.selected);
         this.attack(currentCh, currentEn, index);
         this.enemyMove();
       } else if (this.selected >= 0) {
@@ -71,7 +72,7 @@ export default class GameController {
       this.permittedAttacks = this.getPermittedAttack(this.currentCharacter.attackRange, index);
     } else {
       if ((this.selected >= 0) && (this.permittedMoves.has(index))) {
-        this.moveCharacter(index)
+        this.moveCharacter(index, this.selected, 'we')
         this.enemyMove();
       }
     }
@@ -209,6 +210,9 @@ export default class GameController {
   }
 
   enemyMove() {
+    if (this.positionEnemy.size === 0) {
+      return;
+    }
     let enemyCh;
     let enemyPos;
     let permittedAttacks
@@ -259,7 +263,7 @@ export default class GameController {
         newPos = enemyPos + maxI * this.boardSize;
         let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacterEnemy(newPos, enemyPos); 
+          this.moveCharacter(newPos, enemyPos, 'enemy'); 
           done = true;
         }
         maxI--;
@@ -272,7 +276,7 @@ export default class GameController {
         newPos = enemyPos - maxI * this.boardSize;
         let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacterEnemy(newPos, enemyPos); 
+          this.moveCharacter(newPos, enemyPos, 'enemy'); 
           done = true;
         }
         maxI--;
@@ -290,7 +294,7 @@ export default class GameController {
         newPos = enemyPos + maxJ;
         let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacterEnemy(newPos, enemyPos); 
+          this.moveCharacter(newPos, enemyPos, 'enemy'); 
           done = true;
         }
         maxJ--;
@@ -303,7 +307,7 @@ export default class GameController {
         newPos = enemyPos - maxJ;
         let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacterEnemy(newPos, enemyPos); 
+          this.moveCharacter(newPos, enemyPos, 'enemy'); 
           done = true;
         }
         maxJ--;
@@ -318,6 +322,18 @@ export default class GameController {
     let damage = Math.max(currentCh.attack - currentEn.defence, currentCh.attack * 0.1);
     this.gamePlay.showDamage(index, damage);
     currentEn.health = Math.max(currentEn.health - damage, 0);
+    if (currentEn.health === 0) {
+      if (this.positionUs.has(index)) {
+        let indexCh = Array.from(this.positionUs).indexOf(index);
+        this.teamUs.characters.splice(indexCh, 1);
+        this.positionUs.delete(index)
+      } else {
+        let indexCh = Array.from(this.positionEnemy).indexOf(index);
+        this.teamEnemy.characters.splice(indexCh, 1);
+        this.positionEnemy.delete(index)       
+      }
+      this.levelUp();
+     }
     this.redrawPositions();
   }
 
@@ -329,23 +345,58 @@ export default class GameController {
     return index % this.boardSize;
   }
 
-  moveCharacter(index) {
-    let positionUs = Array.from(this.positionUs);
-    positionUs[positionUs.indexOf(this.selected)] = index;
-    this.positionUs = new Set(positionUs);
-    this.gamePlay.deselectCell(this.selected);
-    this.gamePlay.deselectCell(index);
-    this.permittedMoves.clear();
-    this.permittedAttacks.clear();
-    this.redrawPositions();
+  moveCharacter(index, oldPos = -1, type) {
+    if (type === 'enemy') {
+      let positionEnemy = Array.from(this.positionEnemy);
+      positionEnemy[positionEnemy.indexOf(oldPos)] = index;
+      this.positionEnemy = new Set(positionEnemy);
+      this.redrawPositions();
+    } else {
+      let positionUs = Array.from(this.positionUs);
+      positionUs[positionUs.indexOf(this.selected)] = index;
+      this.positionUs = new Set(positionUs);
+      this.gamePlay.deselectCell(this.selected);
+      this.gamePlay.deselectCell(index);
+      this.permittedMoves.clear();
+      this.permittedAttacks.clear();
+      this.redrawPositions();
+    }
   }
 
-  moveCharacterEnemy(index, oldPos) {
-    let positionEnemy = Array.from(this.positionEnemy);
-    positionEnemy[positionEnemy.indexOf(oldPos)] = index;
-    this.positionEnemy = new Set(positionEnemy);
-    this.redrawPositions();
+  levelUp() {
+    if (this.positionUs.size === 0) {
+      GamePlay.showMessage('Поражение!');
+    }
+    if ((this.positionEnemy.size === 0)) {
+      if (this.currentLevel < 4) {
+        this.currentLevel += 1;
+        let position = [];
+        this.positionUs.clear();
+        this.teamUs.characters.forEach((e) => {
+          position.push(new PositionedCharacter(e, this.getPosition(1)));
+          e.attack = Math.round(Math.max(e.attack, e.attack * (80 + e.health) / 100));
+          e.defence = Math.round(Math.max(e.defence, e.defence * (80 + e.health) / 100));
+          e.health = Math.min(e.health + 80, 100);
+          e.level += 1;
+        });      
+        this.teamEnemy = generateTeam([Daemon, Undead, Vampire], this.currentLevel, 3);
+        this.teamEnemy.characters.forEach((e) => position.push(new PositionedCharacter(e, this.getPosition(2))));
+        this.gamePlay.redrawPositions(position);
+        
+        this.gamePlay.drawUi(this.getThemes().get(this.currentLevel));
+      } else {
+        GamePlay.showMessage('Победа!');
+      }
+    }
   }
 
+  getThemes() {
+    let map = new Map();
+    map.set(1, themes.prairie); 
+    map.set(2, themes.desert); 
+    map.set(3, themes.arctic); 
+    map.set(4, themes.mountain); 
+    return map;  
+  }
 }
 
