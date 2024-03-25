@@ -1,6 +1,4 @@
-//import GamePlay from './GamePlay';
-import themes from './themes';
-import {generateTeam} from './generators';
+import { generateTeam } from './generators';
 import Bowman from './characters/Bowman';
 import Swordsman from './characters/Swordsman';
 import Magician from './characters/Magician';
@@ -10,6 +8,7 @@ import Daemon from './characters/Daemon';
 import PositionedCharacter from './PositionedCharacter';
 import GamePlay from './GamePlay';
 import cursors from "./cursors";
+import GameState from './GameState';
 
 export default class GameController {
   constructor(gamePlay, stateService) {
@@ -17,40 +16,39 @@ export default class GameController {
     this.stateService = stateService;
     this.positionUs = new Set();
     this.positionEnemy = new Set();
-    this.teamUs = [];
-    this.teamEnemy = [];
     this.permittedMoves = new Set();
     this.permittedAttacks = new Set();
     this.selected = -1;
     this.selectedExpected = -1;
     this.boardSize = gamePlay.boardSize;
     this.currentCharacter = {};
-    this.activeTeam = 'player';
-    this.currentLevel = 1;
+    this.blockedBoard = false;
+    this.hits = 0;
+    this.gameState = new GameState;
+    this.gameState.maxScore = 0;
   }
 
   init() {
-    this.gamePlay.drawUi(this.getThemes().get(this.currentLevel));
+    
     // TODO: add event listeners to gamePlay events
     // TODO: load saved stated from stateService
-    let position = [];
-    this.teamUs = generateTeam([Bowman, Swordsman, Magician], 1, 3);
-    this.teamUs.characters.forEach((e) => position.push(new PositionedCharacter(e, this.getPosition(1))));
-    this.teamEnemy = generateTeam([Daemon, Undead, Vampire], 1, 3);
-    this.teamEnemy.characters.forEach((e) => position.push(new PositionedCharacter(e, this.getPosition(2))));
-    this.gamePlay.redrawPositions(position);
+    this.newGame();
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
+    this.gamePlay.addNewGameListener(this.newGame.bind(this));
+    this.gamePlay.addSaveGameListener(this.saveGame.bind(this));
+    this.gamePlay.addLoadGameListener(this.loadGame.bind(this));
+
   }
 
   onCellClick(index) {
     // TODO: react to click
-    if (this.positionEnemy.has(index)) {
+    if (this.blockedBoard) return;
+    if (this.getPos(this.enemyTeam, index) >= 0) {
       if ((this.selected >= 0) && (this.permittedAttacks.has(index))) {
-        let currentCh = this.teamUs.characters[Array.from(this.positionUs).indexOf(this.selected)];
-        let currentEn = this.teamEnemy.characters[Array.from(this.positionEnemy).indexOf(index)];
-        this.gamePlay.deselectCell(this.selected);
+        let currentCh = this.ourTeam[this.getPos(this.ourTeam, this.selected)].character;
+        let currentEn = this.enemyTeam[this.getPos(this.enemyTeam, index)].character;
         this.attack(currentCh, currentEn, index);
         this.enemyMove();
       } else if (this.selected >= 0) {
@@ -58,7 +56,7 @@ export default class GameController {
       } else {
         GamePlay.showError('Нельзя выбрать фигуру врага');
       }
-    } else if (this.positionUs.has(index)) {
+    } else if (this.getPos(this.ourTeam, index) >= 0) {
       if (this.selected >= 0) {
         this.gamePlay.deselectCell(this.selected);
         this.permittedMoves.clear();
@@ -66,8 +64,8 @@ export default class GameController {
       }
       this.selected = index;
       this.gamePlay.selectCell(index);
-      let indexCh = Array.from(this.positionUs).indexOf(index);
-      this.currentCharacter = this.teamUs.characters[indexCh];
+      let indexCh = this.getPos(this.ourTeam, index);
+      this.currentCharacter = this.ourTeam[indexCh].character;
       this.permittedMoves = this.getPermittedArea(this.currentCharacter.moveRange, index);
       this.permittedAttacks = this.getPermittedAttack(this.currentCharacter.attackRange, index);
     } else {
@@ -85,13 +83,13 @@ export default class GameController {
       this.gamePlay.deselectCell(this.selectedExpected);
     }
     this.gamePlay.setCursor(cursors.auto);
-    let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(index);
+    let indexCh = this.getPos(this.ourTeam.concat(this.enemyTeam), index);
     if (indexCh != -1) {
-      let currentCh = this.teamUs.characters.concat(this.teamEnemy.characters)[indexCh];
+      let currentCh = this.ourTeam.concat(this.enemyTeam)[indexCh].character;
       this.gamePlay.showCellTooltip(this.showCellTooltipText(currentCh), index);
-      if (this.positionUs.has(index)) {
+      if (this.getPos(this.ourTeam, index) >= 0) {
         this.gamePlay.setCursor(cursors.pointer);
-      } else if (this.positionEnemy.has(index)) {
+      } else if (this.getPos(this.enemyTeam, index) >= 0) {
         if (this.permittedAttacks.has(index)) {
           this.gamePlay.setCursor(cursors.crosshair);
           this.gamePlay.selectCell(index, 'red');
@@ -119,76 +117,69 @@ export default class GameController {
     let startLength;
     if (whoseTeam === 1) {
       startLength = this.positionUs.size;
-      while (this.positionUs.size === startLength){
-        pos = Math.floor(Math.random() * this.boardSize*2);
+      while (this.positionUs.size === startLength) {
+        pos = Math.floor(Math.random() * this.boardSize * 2);
         pos = Math.floor(pos / 2) * this.boardSize + (pos % 2);
         this.positionUs.add(pos);
       }
     } else {
-       startLength = this.positionEnemy.size;
-       while (this.positionEnemy.size === startLength){
-        pos = Math.floor(Math.random() * this.boardSize*2);
+      startLength = this.positionEnemy.size;
+      while (this.positionEnemy.size === startLength) {
+        pos = Math.floor(Math.random() * this.boardSize * 2);
         pos = (Math.floor(pos / 2) + 1) * this.boardSize - 1 - (pos % 2);
         this.positionEnemy.add(pos);
-       }
+      }
     }
     return pos;
   }
 
   showCellTooltipText(currentCh) {
-    return '\u{1F396}' + currentCh.level + '\u{2694}' + currentCh.attack + '\u{1F6E1}' + currentCh.defence +'\u{2764}' + currentCh.health;
+    return '\u{1F396}' + currentCh.level + '\u{2694}' + currentCh.attack + '\u{1F6E1}' + currentCh.defence + '\u{2764}' + currentCh.health;
   }
+
 
   getPermittedArea(range, index) {
     const area = new Set();
     let newPos;
+
     for (let i = 1; i <= range; i += 1) {
-        newPos = index - this.boardSize * i; //вниз
+      for (let j = -1; j <= 1; j += 2) {
+        newPos = index - this.boardSize * i * j; // вниз/вверх
+        if (this.newPosCorrect(newPos, index, index - this.boardSize * i * j)) {
+          area.add(newPos);
+        }
+
+        newPos = index + i * j; // лево/право
+        if (this.newPosCorrect(newPos, index, index + i * j)) {
+          area.add(newPos);
+        }
+
+        newPos = index - this.boardSize * i + i * j; // левая верхняя/правая верхняя
         if (this.newPosCorrect(newPos, index, index - this.boardSize * i)) {
           area.add(newPos);
         }
-        newPos = index + this.boardSize * i; //вверх
+
+        newPos = index + this.boardSize * i + i * j; // левая нижняя/правая нижняя
         if (this.newPosCorrect(newPos, index, index + this.boardSize * i)) {
           area.add(newPos);
         }
-        newPos = index - i; //лево
-        if (this.newPosCorrect(newPos, index, index)) {
-          area.add(newPos);
-        }
-        newPos = index + i; //право
-        if (this.newPosCorrect(newPos, index, index)) {
-          area.add(newPos);
-        }
-        newPos = index - this.boardSize * i - i; //левая верхняя
-        if (this.newPosCorrect(newPos, index, index - this.boardSize * i)) {
-          area.add(newPos);
-        }
-        newPos = index - this.boardSize * i + i; //правая верхняя
-        if (this.newPosCorrect(newPos, index, index - this.boardSize * i)) {
-          area.add(newPos);
-        }
-        newPos = index + this.boardSize * i - i; //левая нижняя
-        if (this.newPosCorrect(newPos, index, index + this.boardSize * i)) {
-          area.add(newPos);
-        }
-        newPos = index + this.boardSize * i + i; //правая нижняя
-        if (this.newPosCorrect(newPos, index, index + this.boardSize * i)) {
-          area.add(newPos);
-        }
+      }
     }
+
     return area;
   }
 
+
   newPosCorrect(newPos, index, row) {
-    if ((newPos >= 0 ) && (newPos < this.boardSize*this.boardSize) && (newPos != index)
-    && (newPos >= this.boardSize * Math.floor(row / this.boardSize))
-    && (newPos < this.boardSize * (Math.floor(row / this.boardSize)+1))) {
+    if ((newPos >= 0) && (newPos < this.boardSize * this.boardSize) && (newPos != index)
+      && (newPos >= this.boardSize * Math.floor(row / this.boardSize))
+      && (newPos < this.boardSize * (Math.floor(row / this.boardSize) + 1))) {
       return true;
     }
     return false;
   }
 
-  getPermittedAttack(range,index) {
+  getPermittedAttack(range, index) {
     const area = new Set();
     let newPos;
     for (let i = -range; i <= range; i += 1) {
@@ -202,139 +193,138 @@ export default class GameController {
     return area;
   }
 
-  redrawPositions() {
-    let position = [];
-    this.teamUs.characters.forEach((e, i) => position.push(new PositionedCharacter(e, Array.from(this.positionUs)[i])));
-    this.teamEnemy.characters.forEach((e, i) => position.push(new PositionedCharacter(e, Array.from(this.positionEnemy)[i])));
-    this.gamePlay.redrawPositions(position);
-  }
-
   enemyMove() {
-    if (this.positionEnemy.size === 0) {
-      return;
+    if ((this.enemyTeam.length === 0) || (this.ourTeam.length === 0)) {
+       return;
     }
     let enemyCh;
     let enemyPos;
     let permittedAttacks
-    let targetCh;
     let targetPos;
     let done = false;
     let distance;
     let newPos;
-    this.teamEnemy.characters.forEach((en, i) => {
+    this.enemyTeam.forEach((en) => {
       if (!done) {
-      enemyCh = en;
-      enemyPos = Array.from(this.positionEnemy)[i];
-      permittedAttacks = this.getPermittedAttack(enemyCh.attackRange, enemyPos);
-      this.teamUs.characters.forEach((tg, j) => {
-        targetPos = Array.from(this.positionUs)[j];
-        if (permittedAttacks.has(targetPos) && (!done)) {
-          targetCh = tg;
-          this.attack(enemyCh, targetCh, targetPos);
-          done = true;
-        }
-      })
+        permittedAttacks = this.getPermittedAttack(en.character.attackRange, en.position);
+        this.ourTeam.forEach((tg) => {
+          if (permittedAttacks.has(tg.position) && (!done)) {
+            this.attack(en.character, tg.character, tg.position);
+            done = true;
+          }
+        })
       }
     })
 
+    if (done) return;
+    
     let arrOfPriority = [];
-    this.teamEnemy.characters.forEach((en, i) => {
-      enemyCh = en;
-      enemyPos = Array.from(this.positionEnemy)[i];
-      this.teamUs.characters.forEach((tg, j) => {
-        targetPos = Array.from(this.positionUs)[j];
-        distance = (Math.abs(this.getColumn(enemyPos) - this.getColumn(targetPos)) + Math.abs(this.getRow(enemyPos) - this.getRow(targetPos)))/(enemyCh.moveRange + enemyCh.attackRange + enemyCh.attack);
-        arrOfPriority.push({i,j, distance});
+    this.enemyTeam.forEach((en) => {
+      enemyCh = en.character;
+      this.ourTeam.forEach((tg) => {
+        distance = (Math.abs(this.getColumn(en.position) - this.getColumn(tg.position)) + Math.abs(this.getRow(en.position) - this.getRow(tg.position))) / (enemyCh.moveRange + enemyCh.attackRange + enemyCh.attack);
+        arrOfPriority.push({ en, tg, distance });
       })
     })
 
     arrOfPriority.sort((a, b) => a.distance - b.distance);
-    enemyCh = this.teamEnemy.characters[arrOfPriority[0].i];
-    enemyPos = Array.from(this.positionEnemy)[arrOfPriority[0].i];
-    targetPos = Array.from(this.positionUs)[arrOfPriority[0].j];
+
+    enemyCh = arrOfPriority[0].en.character;
+    enemyPos = arrOfPriority[0].en.position;
+    targetPos = arrOfPriority[0].tg.position;
     let rowEn = this.getRow(enemyPos);
     let rowtg = this.getRow(targetPos);
     let maxI;
     if ((rowEn < rowtg) && (!done)) {
       if (rowEn + enemyPos.moveRange < rowtg) {
-        maxI =  enemyCh.moveRange;
-      } else {maxI = rowtg - rowEn};
-      while (maxI >= 0){
+        maxI = enemyCh.moveRange;
+      } else maxI = rowtg - rowEn;
+      while (maxI >= 0) {
         newPos = enemyPos + maxI * this.boardSize;
-        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        let indexCh = this.getPos(this.ourTeam.concat(this.enemyTeam), (newPos));
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacter(newPos, enemyPos, 'enemy'); 
+          this.moveCharacter(newPos, enemyPos, 'enemy');
           done = true;
         }
         maxI--;
       }
     } else if ((rowEn > rowtg) && (!done)) {
       if (rowEn + enemyPos.moveRange < rowtg) {
-        maxI =  -enemyCh.moveRange;
-      } else {maxI = - rowtg + rowEn};
-      while (maxI >= 0){
+        maxI = -enemyCh.moveRange;
+      } else maxI = - rowtg + rowEn;
+      while (maxI >= 0) {
         newPos = enemyPos - maxI * this.boardSize;
-        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        let indexCh = this.getPos(this.ourTeam.concat(this.enemyTeam), (newPos));
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacter(newPos, enemyPos, 'enemy'); 
+          this.moveCharacter(newPos, enemyPos, 'enemy');
           done = true;
         }
         maxI--;
       }
-    }  
-    
+    }
+
+
     let colEn = this.getColumn(enemyPos);
     let coltg = this.getColumn(targetPos);
     let maxJ;
     if ((colEn < coltg) && (!done)) {
       if (colEn + enemyPos.moveRange < coltg) {
-        maxI =  enemyCh.moveRange;
-      } else {maxJ = colEn - colEn};
-      while (maxJ >= 0){
+        maxI = enemyCh.moveRange;
+      } else maxJ = colEn - colEn;
+      while (maxJ >= 0) {
         newPos = enemyPos + maxJ;
-        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        let indexCh = this.getPos(this.ourTeam.concat(this.enemyTeam), (newPos));
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacter(newPos, enemyPos, 'enemy'); 
+          this.moveCharacter(newPos, enemyPos, 'enemy');
           done = true;
         }
         maxJ--;
       }
     } else if ((colEn > coltg) && (!done)) {
       if (colEn + enemyPos.moveRange < coltg) {
-        maxJ =  -enemyCh.moveRange;
-      } else {maxJ = - coltg + colEn};
-      while (maxJ >= 0){
+        maxJ = -enemyCh.moveRange;
+      } else maxJ = - coltg + colEn;
+      while (maxJ >= 0) {
         newPos = enemyPos - maxJ;
-        let indexCh = Array.from(this.positionUs).concat(Array.from(this.positionEnemy)).indexOf(newPos);
+        let indexCh = this.getPos(this.ourTeam.concat(this.enemyTeam), (newPos));
         if ((indexCh === -1) && (!done)) {
-          this.moveCharacter(newPos, enemyPos, 'enemy'); 
-          done = true;
+          this.moveCharacter(newPos, enemyPos, 'enemy');
+          return;
+          //done = true;
         }
         maxJ--;
       }
     }
-
-
-
   }
 
   attack(currentCh, currentEn, index) {
     let damage = Math.max(currentCh.attack - currentEn.defence, currentCh.attack * 0.1);
+    if (this.getPos(this.enemyTeam, index) >= 0) {
+      this.hits += damage;
+    }
     this.gamePlay.showDamage(index, damage);
     currentEn.health = Math.max(currentEn.health - damage, 0);
     if (currentEn.health === 0) {
-      if (this.positionUs.has(index)) {
-        let indexCh = Array.from(this.positionUs).indexOf(index);
-        this.teamUs.characters.splice(indexCh, 1);
-        this.positionUs.delete(index)
+      if (this.getPos(this.ourTeam, index) >= 0) {
+        let indexCh = this.getPos(this.ourTeam, index);
+        this.ourTeam.splice(indexCh, 1);
+        if (this.selected === index) {
+          this.gamePlay.deselectCell(index);
+          this.selected = -1;
+          this.permittedMoves.clear();
+          this.permittedAttacks.clear();
+          if (this.selectedExpected != -1) {
+            this.gamePlay.deselectCell(this.selectedExpected);
+            this.selectedExpected = -1;
+          }
+        }
       } else {
-        let indexCh = Array.from(this.positionEnemy).indexOf(index);
-        this.teamEnemy.characters.splice(indexCh, 1);
-        this.positionEnemy.delete(index)       
+        let indexCh = this.getPos(this.enemyTeam, index);
+        this.enemyTeam.splice(indexCh, 1);
       }
       this.levelUp();
-     }
-    this.redrawPositions();
+    }
+    this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
   }
 
   getRow(index) {
@@ -347,56 +337,110 @@ export default class GameController {
 
   moveCharacter(index, oldPos = -1, type) {
     if (type === 'enemy') {
-      let positionEnemy = Array.from(this.positionEnemy);
-      positionEnemy[positionEnemy.indexOf(oldPos)] = index;
-      this.positionEnemy = new Set(positionEnemy);
-      this.redrawPositions();
+      this.enemyTeam[this.getPos(this.enemyTeam, oldPos)].position = index;
+      this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
     } else {
-      let positionUs = Array.from(this.positionUs);
-      positionUs[positionUs.indexOf(this.selected)] = index;
-      this.positionUs = new Set(positionUs);
+      this.ourTeam[this.getPos(this.ourTeam, this.selected)].position = index;
+
       this.gamePlay.deselectCell(this.selected);
-      this.gamePlay.deselectCell(index);
-      this.permittedMoves.clear();
-      this.permittedAttacks.clear();
-      this.redrawPositions();
+      this.selected = index;
+      this.gamePlay.selectCell(this.selected);
+      this.permittedMoves = this.getPermittedArea(this.ourTeam[this.getPos(this.ourTeam, this.selected)].character.moveRange, index);
+      this.permittedAttacks = this.getPermittedAttack(this.ourTeam[this.getPos(this.ourTeam, this.selected)].character.attackRange, index);
+      this.selectedExpected = -1;
+      this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
     }
   }
 
   levelUp() {
-    if (this.positionUs.size === 0) {
-      GamePlay.showMessage('Поражение!');
+    if (this.ourTeam.length === 0) {
+      GamePlay.showMessage('Поражение! Количество очков ' + this.hits);
+      this.blockedBoard = true;
     }
-    if ((this.positionEnemy.size === 0)) {
+    if ((this.enemyTeam.length === 0)) {
       if (this.currentLevel < 4) {
         this.currentLevel += 1;
-        let position = [];
+        this.positionEnemy.clear();
         this.positionUs.clear();
-        this.teamUs.characters.forEach((e) => {
-          position.push(new PositionedCharacter(e, this.getPosition(1)));
-          e.attack = Math.round(Math.max(e.attack, e.attack * (80 + e.health) / 100));
-          e.defence = Math.round(Math.max(e.defence, e.defence * (80 + e.health) / 100));
-          e.health = Math.min(e.health + 80, 100);
-          e.level += 1;
-        });      
-        this.teamEnemy = generateTeam([Daemon, Undead, Vampire], this.currentLevel, 3);
-        this.teamEnemy.characters.forEach((e) => position.push(new PositionedCharacter(e, this.getPosition(2))));
-        this.gamePlay.redrawPositions(position);
-        
-        this.gamePlay.drawUi(this.getThemes().get(this.currentLevel));
+        this.ourTeam.forEach((e) => {
+          e.character.attack = Math.round(Math.max(e.character.attack, e.character.attack * (80 + e.character.health) / 100));
+          e.character.defence = Math.round(Math.max(e.character.defence, e.character.defence * (80 + e.character.health) / 100));
+          e.character.health = Math.min(e.character.health + 80, 100);
+          e.character.level += 1;
+        });
+        let enemyTeam = generateTeam([Daemon, Undead, Vampire], this.currentLevel, 3);
+        enemyTeam.characters.forEach((e) => this.enemyTeam.push(new PositionedCharacter(e, this.getPosition(2))));
+        this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+        this.gamePlay.drawUi(this.geThemes(this.currentLevel));
       } else {
-        GamePlay.showMessage('Победа!');
+        GamePlay.showMessage('Победа! Количество очков ' + this.hits);
+        this.blockedBoard = true;
       }
     }
   }
 
-  getThemes() {
-    let map = new Map();
-    map.set(1, themes.prairie); 
-    map.set(2, themes.desert); 
-    map.set(3, themes.arctic); 
-    map.set(4, themes.mountain); 
-    return map;  
+  geThemes(level) {
+    switch (level) {
+      case 2: return 'desert';
+      case 3: return 'arctic';
+      case 4: return 'mountain';
+      default: return 'prairie';
+    }
   }
+
+  getPos(arr, index) {
+    return arr.findIndex((e) => e.position === index);
+  }
+
+  newGame() {
+    this.gameState.maxScore = Math.max(this.gameState.maxScore, this.hits);
+    this.currentLevel = 1;
+    this.gamePlay.drawUi(this.geThemes(this.currentLevel));
+    const ourTeam = generateTeam([Bowman, Swordsman, Magician], 1, 3);
+    this.ourTeam = [];
+    ourTeam.characters.forEach((e) => this.ourTeam.push(new PositionedCharacter(e, this.getPosition(1))));
+    const enemyTeam = generateTeam([Daemon, Undead, Vampire], 1, 3);
+    this.enemyTeam = [];
+    enemyTeam.characters.forEach((e) => this.enemyTeam.push(new PositionedCharacter(e, this.getPosition(2))));
+    this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+    this.blockedBoard = false;
+    this.hits = 0;
+    if (this.gameState.maxScore != 0) {
+      GamePlay.showMessage('Максимальное количество очков ' + this.gameState.maxScore);
+    }
+  }
+
+  saveGame() {
+    const currentGameState = {
+      hits: this.hits,
+      maxScore: this.gameState.maxScore,
+      level: this.currentLevel,
+      ourTeam: this.ourTeam,
+      enemyTeam: this.enemyTeam
+    };
+    this.stateService.save(currentGameState);
+    GamePlay.showMessage('Игра сохранена!');
+  }
+
+  loadGame() {
+    try {
+      const loadGameState = this.stateService.load();
+      if (loadGameState) {
+        this.hits = loadGameState.hits;
+        this.currentLevel = loadGameState.level;
+        this.ourTeam = loadGameState.ourTeam;
+        this.enemyTeam = loadGameState.enemyTeam;
+        this.gameState.maxScore = loadGameState.maxScore;
+        this.gamePlay.drawUi(this.geThemes(this.currentLevel));
+        this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+        this.blockedBoard = false;
+        GamePlay.showMessage('Игра загружена!');
+      }
+    } catch (err) {
+      GamePlay.showError(err);
+      this.newGame();
+    }
+  }
+
 }
 
