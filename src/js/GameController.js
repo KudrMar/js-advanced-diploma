@@ -237,7 +237,7 @@ export default class GameController {
     let rowtg = this.getRow(targetPos);
     let maxI;
     if ((rowEn < rowtg) && (!done)) {
-      if (rowEn + enemyPos.moveRange < rowtg) {
+      if (rowEn + enemyCh.moveRange < rowtg) {
         maxI = enemyCh.moveRange;
       } else maxI = rowtg - rowEn;
       while (maxI >= 0) {
@@ -250,8 +250,8 @@ export default class GameController {
         maxI--;
       }
     } else if ((rowEn > rowtg) && (!done)) {
-      if (rowEn + enemyPos.moveRange < rowtg) {
-        maxI = -enemyCh.moveRange;
+      if (rowEn - enemyCh.moveRange > rowtg) {
+        maxI = enemyCh.moveRange;
       } else maxI = - rowtg + rowEn;
       while (maxI >= 0) {
         newPos = enemyPos - maxI * this.boardSize;
@@ -269,7 +269,7 @@ export default class GameController {
     let coltg = this.getColumn(targetPos);
     let maxJ;
     if ((colEn < coltg) && (!done)) {
-      if (colEn + enemyPos.moveRange < coltg) {
+      if (colEn + enemyCh.moveRange < coltg) {
         maxI = enemyCh.moveRange;
       } else maxJ = colEn - colEn;
       while (maxJ >= 0) {
@@ -282,8 +282,8 @@ export default class GameController {
         maxJ--;
       }
     } else if ((colEn > coltg) && (!done)) {
-      if (colEn + enemyPos.moveRange < coltg) {
-        maxJ = -enemyCh.moveRange;
+      if (colEn - enemyCh.moveRange > coltg) {
+        maxJ = enemyCh.moveRange;
       } else maxJ = - coltg + colEn;
       while (maxJ >= 0) {
         newPos = enemyPos - maxJ;
@@ -421,10 +421,10 @@ export default class GameController {
     this.gameState.maxScore = Math.max(this.gameState.maxScore, this.hits);
     this.currentLevel = 1;
     this.gamePlay.drawUi(this.geThemes(this.currentLevel));
-    const ourTeam = generateTeam([Bowman, Swordsman, Magician], 1, 3);
+    const ourTeam = generateTeam([Bowman, Swordsman, Magician], 1, 1);
     this.ourTeam = [];
     ourTeam.characters.forEach((e) => this.ourTeam.push(new PositionedCharacter(e, this.getPosition(1))));
-    const enemyTeam = generateTeam([Daemon, Undead, Vampire], 1, 3);
+    const enemyTeam = generateTeam([Daemon, Undead, Vampire], 1, 1);
     this.enemyTeam = [];
     enemyTeam.characters.forEach((e) => this.enemyTeam.push(new PositionedCharacter(e, this.getPosition(2))));
     this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
