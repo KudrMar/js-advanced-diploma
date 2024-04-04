@@ -29,7 +29,7 @@ export default class GameController {
   }
 
   init() {
-    
+
     // TODO: add event listeners to gamePlay events
     // TODO: load saved stated from stateService
     this.newGame();
@@ -49,8 +49,10 @@ export default class GameController {
       if ((this.selected >= 0) && (this.permittedAttacks.has(index))) {
         let currentCh = this.ourTeam[this.getPos(this.ourTeam, this.selected)].character;
         let currentEn = this.enemyTeam[this.getPos(this.enemyTeam, index)].character;
-        this.attack(currentCh, currentEn, index);
-        this.enemyMove();
+        this.attack(currentCh, currentEn, index)
+          .then(() => {
+            this.enemyMove();
+          });
       } else if (this.selected >= 0) {
         GamePlay.showError('Враг вне досягаемости');
       } else {
@@ -74,7 +76,6 @@ export default class GameController {
         this.enemyMove();
       }
     }
-
   }
 
   onCellEnter(index) {
@@ -195,7 +196,7 @@ export default class GameController {
 
   enemyMove() {
     if ((this.enemyTeam.length === 0) || (this.ourTeam.length === 0)) {
-       return;
+      return;
     }
     let enemyCh;
     let enemyPos;
@@ -209,7 +210,7 @@ export default class GameController {
         permittedAttacks = this.getPermittedAttack(en.character.attackRange, en.position);
         this.ourTeam.forEach((tg) => {
           if (permittedAttacks.has(tg.position) && (!done)) {
-            this.attack(en.character, tg.character, tg.position);
+            this.attack(en.character, tg.character, tg.position, en.position);
             done = true;
           }
         })
@@ -217,7 +218,7 @@ export default class GameController {
     })
 
     if (done) return;
-    
+
     let arrOfPriority = [];
     this.enemyTeam.forEach((en) => {
       enemyCh = en.character;
@@ -290,41 +291,50 @@ export default class GameController {
         if ((indexCh === -1) && (!done)) {
           this.moveCharacter(newPos, enemyPos, 'enemy');
           return;
-          //done = true;
         }
         maxJ--;
       }
     }
   }
 
-  attack(currentCh, currentEn, index) {
+  attack(currentCh, currentEn, index, attackerIndex = -1) {
+    return new Promise((resolve) => {
     let damage = Math.max(currentCh.attack - currentEn.defence, currentCh.attack * 0.1);
     if (this.getPos(this.enemyTeam, index) >= 0) {
       this.hits += damage;
     }
-    this.gamePlay.showDamage(index, damage);
-    currentEn.health = Math.max(currentEn.health - damage, 0);
-    if (currentEn.health === 0) {
-      if (this.getPos(this.ourTeam, index) >= 0) {
-        let indexCh = this.getPos(this.ourTeam, index);
-        this.ourTeam.splice(indexCh, 1);
-        if (this.selected === index) {
-          this.gamePlay.deselectCell(index);
-          this.selected = -1;
-          this.permittedMoves.clear();
-          this.permittedAttacks.clear();
-          if (this.selectedExpected != -1) {
-            this.gamePlay.deselectCell(this.selectedExpected);
-            this.selectedExpected = -1;
-          }
-        }
-      } else {
-        let indexCh = this.getPos(this.enemyTeam, index);
-        this.enemyTeam.splice(indexCh, 1);
-      }
-      this.levelUp();
+    else if (this.getPos(this.ourTeam, index) >= 0) {
+      this.gamePlay.selectCell(attackerIndex, 'red');
     }
-    this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+    this.gamePlay.showDamage(index, damage).then(() => {
+      currentEn.health = Math.max(currentEn.health - damage, 0);
+      if (currentEn.health === 0) {
+        if (this.getPos(this.ourTeam, index) >= 0) {
+          let indexCh = this.getPos(this.ourTeam, index);
+          this.ourTeam.splice(indexCh, 1);
+          if (this.selected === index) {
+            this.gamePlay.deselectCell(index);
+            this.selected = -1;
+            this.permittedMoves.clear();
+            this.permittedAttacks.clear();
+            if (this.selectedExpected != -1) {
+              this.gamePlay.deselectCell(this.selectedExpected);
+              this.selectedExpected = -1;
+            }
+          }
+        } else {
+          let indexCh = this.getPos(this.enemyTeam, index);
+          this.enemyTeam.splice(indexCh, 1);
+        }
+        this.levelUp();
+      }
+      if (attackerIndex != -1) {
+        this.gamePlay.deselectCell(attackerIndex);
+      }
+      this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+      resolve();
+    });
+  });
   }
 
   getRow(index) {
@@ -337,11 +347,26 @@ export default class GameController {
 
   moveCharacter(index, oldPos = -1, type) {
     if (type === 'enemy') {
-      this.enemyTeam[this.getPos(this.enemyTeam, oldPos)].position = index;
-      this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+      new Promise((resolve) => {
+        this.blockedBoard = true;
+        setTimeout(() => {
+          this.gamePlay.selectCell(oldPos, "red");
+          setTimeout(() => {
+            this.gamePlay.selectCell(index, "red");
+            setTimeout(() => {
+              this.enemyTeam[this.getPos(this.enemyTeam, oldPos)].position = index;
+              this.gamePlay.redrawPositions([...this.ourTeam, ...this.enemyTeam]);
+              resolve();
+            }, 300);
+          }, 300);
+        }, 300);
+      }).then(() => {
+        this.gamePlay.deselectCell(oldPos);
+        this.gamePlay.deselectCell(index);
+        this.blockedBoard = false;
+      });
     } else {
       this.ourTeam[this.getPos(this.ourTeam, this.selected)].position = index;
-
       this.gamePlay.deselectCell(this.selected);
       this.selected = index;
       this.gamePlay.selectCell(this.selected);
@@ -441,6 +466,5 @@ export default class GameController {
       this.newGame();
     }
   }
-
 }
 
